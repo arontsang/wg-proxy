@@ -1,7 +1,9 @@
-pub mod tunnel;
-pub mod support;
+
+
+pub mod device;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tunnel::wg::run_tunnel().await
+    println!("exit node");
+    Ok(())
 }
