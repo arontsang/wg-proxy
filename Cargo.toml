@@ -3,4 +3,10 @@ name = "wg-proxy"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "ext"
+path = "src/exit_node.rs"
+
 [dependencies]
+tokio = { version = "1.50.0", features = ["net"] }
+tokio-wireguard = "0.1.3"
