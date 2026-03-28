@@ -61,10 +61,16 @@ pub async fn run_tunnel() -> Result<()> {
         interface,
     ).await?;
 
-    let listener = TcpListenerStream { tcp_listener: listener };
-    let mut listener = listener.map(TokioIo::new);
-
-    handle_proxy_request(&mut listener).await
+    // let listener = TcpListenerStream { tcp_listener: listener };
+    // let mut listener = listener.map(TokioIo::new);
+    //
+    //
+    loop {
+        let (stream, peer) = listener.accept().await?;
+        println!("Connected to peer: {}", peer);
+        let stream = TokioIo::new(stream);
+        handle_proxy_request(stream);
+    }
 }
 
 struct TcpListenerStream {

@@ -7,6 +7,7 @@ use hyper::service::service_fn;
 use hyper::upgrade::Upgraded;
 use hyper::{Method, Request, Response};
 use hyper::rt::{Read, Write};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio_stream::{Stream, StreamExt};
 
@@ -14,26 +15,30 @@ use tokio_stream::{Stream, StreamExt};
 mod support;
 use support::TokioIo;
 
-pub async fn handle_proxy_request<TStream, TRequest>(requests: &mut TStream) -> Result<()>
+pub async fn handle_proxy_request_stream<TStream, TRequest>(requests: &mut TStream) -> Result<()>
 where TRequest : Read + Write + Unpin + Send + 'static,
       TStream : Unpin + Stream<Item=TRequest> {
 
     while let Some(request) = requests.next().await {
-        tokio::spawn(async move {
-            if let Err(err) = ServerBuilder::new()
-                .preserve_header_case(true)
-                .title_case_headers(true)
-                .serve_connection(request, service_fn(proxy))
-                .with_upgrades()
-                .await
-            {
-                println!("Failed to serve connection: {:?}", err);
-            }
-
-        });
+        handle_proxy_request(request);
     }
 
     Ok(())
+}
+
+pub fn handle_proxy_request<TRequest>(request: TRequest)
+where TRequest : Read + Write + Unpin + Send + 'static {
+    tokio::spawn(async move {
+        if let Err(err) = ServerBuilder::new()
+            .preserve_header_case(true)
+            .title_case_headers(true)
+            .serve_connection(request, service_fn(proxy))
+            .with_upgrades()
+            .await
+        {
+            println!("Failed to serve connection: {:?}", err);
+        }
+    });
 }
 
 async fn proxy(
@@ -125,6 +130,8 @@ async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     let (from_client, from_server) =
         tokio::io::copy_bidirectional(&mut upgraded, &mut server).await?;
 
+    let _ = upgraded.shutdown().await;
+    let _ = server.shutdown().await;
     // Print message when done
     println!(
         "client wrote {} bytes and received {} bytes",
