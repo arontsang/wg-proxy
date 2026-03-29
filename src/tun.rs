@@ -1,10 +1,11 @@
+pub mod acceptor;
 pub mod device;
-pub mod tunnel;
 pub mod support;
+pub mod tunnel;
 
 use std::net::SocketAddr;
 use tcp_ip::tcp::TcpListener;
-use device::tun::TunnelDevice;
+use crate::device::tun::TunnelDevice;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -12,7 +13,7 @@ async fn main() -> anyhow::Result<()> {
     let mut listener = TcpListener::bind_all(tun.clone()).await?;
     loop {
         let (socket, addr) = listener.accept().await?;
-        let io = support::TokioIo::new(socket);
+        let io = crate::support::TokioIo::new(socket);
         println!("new connection from {}", addr);
         tunnel::http::handle_proxy_request(io);
     }

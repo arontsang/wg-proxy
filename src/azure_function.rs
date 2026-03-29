@@ -1,16 +1,21 @@
+pub mod acceptor;
+pub mod device;
+pub mod support;
+pub mod tunnel;
 use std::net::SocketAddr;
 use axum::{
     routing::get,
     Router,
 };
 
-pub mod device;
-pub mod wg;
+
+use crate::acceptor::wg_acceptor::main_loop as wg_main_loop;
+
 
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = tokio::join!(host_http_trigger(), wg::main_loop());
+    let _ = tokio::join!(wg_main_loop(), host_http_trigger());
     Ok(())
 }
 

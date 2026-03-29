@@ -11,9 +11,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio_stream::{Stream, StreamExt};
 
-#[path = "../support/mod.rs"]
-mod support;
-use support::TokioIo;
+use crate::support::TokioIo;
 
 pub async fn handle_proxy_request_stream<TStream, TRequest>(requests: &mut TStream) -> Result<()>
 where TRequest : Read + Write + Unpin + Send + 'static,

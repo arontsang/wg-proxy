@@ -1,9 +1,12 @@
-use crate::device::functional::FunctionalDevice;
+
+
+
 use boringtun::noise::{Tunn, TunnResult};
 use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use boringtun::x25519::{PublicKey, StaticSecret};
+use crate::device::functional::FunctionalDevice;
 
 pub struct WgDevice{
     peer_endpoint: SocketAddr,
