@@ -18,6 +18,10 @@ fn read_key(key: &str) -> anyhow::Result<[u8; 32]> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    main_loop().await
+}
+
+pub async fn main_loop() -> anyhow::Result<()> {
     let tun = device::wg::WgDevice::new(
         env::var("WG_PEER_ENDPOINT")?.to_addr()?,
         read_key("WG_PEER_KEY")?,

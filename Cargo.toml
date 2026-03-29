@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "exit"
-path = "src/exit_node.rs"
+name = "azure"
+path = "src/azure_function.rs"
 
 [[bin]]
 name = "tun"
@@ -17,19 +17,15 @@ path = "src/wg.rs"
 
 [dependencies]
 anyhow = "1.0.102"
+axum = "0.8.8"
 boringtun = "0.7.0"
-futures = { version = "0.3.32", features = [] }
-futures-channel = { version = "0.3.32", features = ["futures-sink"] }
-futures-core = "0.3.32"
-futures-sink = "0.3.32"
-lazy_static = "1.5.0"
 tcp_ip = "0.1.10"
 tokio = { version = "1.50.0", features = ["fs", "io-util", "macros", "net", "rt-multi-thread"] }
 tun-rs = { version = "1.5.0", features = ["async"]}
 bytes = "1.11.1"
+http = "1.4.0"
 http-body-util = "0.1.3"
 hyper = { version = "1.8.1", features = ["http1", "client", "server"] }
 tokio-stream = "0.1.18"
-http = "1.4.0"
 pin-project-lite = "0.2.17"
 base64 = "0.22.1"
