@@ -1,33 +1,22 @@
-
-
-use lazy_static::lazy_static;
 use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use futures::{SinkExt, StreamExt};
 use futures::channel::mpsc::{Receiver, Sender};
 use tokio_smoltcp::device::{AsyncDevice, DeviceCapabilities, Packet};
-use tokio_smoltcp::smoltcp::phy::{Medium};
 
 pub struct FunctionalDevice {
     send_queue: Sender<Packet>,
     recv_queue: Receiver<Packet>,
     poller: tokio::task::JoinHandle<()>,
-    capabilities: CAPABILITIES,
+    capabilities: DeviceCapabilities,
 }
 
 
-lazy_static! {
-    static ref CAPABILITIES: DeviceCapabilities = {
-        let mut ret = DeviceCapabilities::default();
-        ret.medium = Medium::Ip;
-        ret.max_transmission_unit = 1380;
-        ret
-    };
-}
+
 
 impl FunctionalDevice {
-    pub fn new<Poller, F>(poll: Poller, capabilities: CAPABILITIES) -> Self
+    pub fn new<Poller, F>(poll: Poller, capabilities: DeviceCapabilities) -> Self
     where Poller: FnOnce(Sender<Packet>, Receiver<Packet>) -> F,
           F: Future<Output = ()> + Send + 'static {
         let (send_enqueue, send_dequeue) = futures_channel::mpsc::channel::<Packet>(1024);

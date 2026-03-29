@@ -7,6 +7,10 @@ edition = "2024"
 name = "exit"
 path = "src/exit_node.rs"
 
+[[bin]]
+name = "tun"
+path = "src/tun.rs"
+
 [dependencies]
 anyhow = "1.0.102"
 boringtun = "0.7.0"
@@ -15,6 +19,7 @@ futures-channel = { version = "0.3.32", features = ["futures-sink"] }
 futures-core = "0.3.32"
 futures-sink = "0.3.32"
 lazy_static = "1.5.0"
-tokio = { version = "1.50.0", features = ["macros", "net", "rt-multi-thread"] }
+tokio = { version = "1.50.0", features = ["fs", "io-util", "macros", "net", "rt-multi-thread"] }
 tokio-smoltcp = "0.5.2"
+tokio-tun = "0.15.2"
 
