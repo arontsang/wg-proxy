@@ -1,2 +1,4 @@
-pub mod functional;
 pub mod tun;
+mod functional;
+
+pub mod wg;
