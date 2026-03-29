@@ -10,8 +10,7 @@ use axum::{
 
 
 use crate::acceptor::wg_acceptor::main_loop as wg_main_loop;
-
-
+use crate::support::get_int_from_env;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,11 +22,8 @@ async fn host_http_trigger() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/Sleep", get(sleep));
 
-    let port_key = "FUNCTIONS_CUSTOMHANDLER_PORT";
-    let port: u16 = match std::env::var(port_key) {
-        Ok(val) => val.parse().expect("Custom Handler port is not a number!"),
-        Err(_) => 3000,
-    };
+    let port = get_int_from_env("FUNCTIONS_CUSTOMHANDLER_PORT")
+        .unwrap_or(3000);
 
     let listen_addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;

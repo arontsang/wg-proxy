@@ -148,3 +148,13 @@ where
         hyper::rt::Write::poll_write_vectored(self.project().inner, cx, bufs)
     }
 }
+
+pub fn get_int_from_env(key: &str) -> Option<u16> {
+    if let Ok(val) = std::env::var(key) {
+        if let Ok(val) = val.parse::<u16>() {
+            return Some(val);
+        }
+    }
+    None
+
+}

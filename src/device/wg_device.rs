@@ -7,6 +7,7 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use crate::device::functional::FunctionalDevice;
+use crate::support::get_int_from_env;
 
 pub struct WgDevice{
     peer_endpoint: SocketAddr,
@@ -47,7 +48,8 @@ impl WgDevice {
 
 
         let mut net_stack_config = tcp_ip::IpStackConfig::default();
-        net_stack_config.mtu = 1380;
+        net_stack_config.mtu = get_int_from_env("WG_MTU")
+            .unwrap_or(1380);
 
         FunctionalDevice::new(net_stack_config, |ip_stack_send, mut ip_stack_recv|async move{
             std::thread::spawn(move || {
