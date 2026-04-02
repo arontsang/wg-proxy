@@ -25,7 +25,7 @@ struct InvokeResponse {
 async fn timer_handler(Json(payload): Json<InvokeRequest>) -> Json<InvokeResponse> {
     println!("Timer triggered!");
 
-    tokio::time::sleep(std::time::Duration::from_mins(1)).await;
+    tokio::time::sleep(std::time::Duration::from_mins(5)).await;
 
     Json(InvokeResponse {
         Outputs: None,
