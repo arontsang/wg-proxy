@@ -3,14 +3,16 @@
 
 use boringtun::noise::{Tunn, TunnResult};
 use std::cell::RefCell;
+use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::rc::Rc;
 use boringtun::x25519::{PublicKey, StaticSecret};
+use tokio::net::lookup_host;
 use crate::device::functional::FunctionalDevice;
 use crate::support::get_int_from_env;
 
 pub struct WgDevice{
-    peer_endpoint: SocketAddr,
+    peer_endpoint: String,
     peer_public_key: [u8; 32],
     private_key: [u8; 32],
 }
@@ -18,7 +20,7 @@ pub struct WgDevice{
 
 impl WgDevice {
 
-    pub fn new (peer_endpoint: SocketAddr, peer_public_key: [u8; 32], private_key: [u8; 32]) -> Self {
+    pub fn new (peer_endpoint: String, peer_public_key: [u8; 32], private_key: [u8; 32]) -> Self {
         Self {
             private_key,
             peer_endpoint,
@@ -39,7 +41,10 @@ impl WgDevice {
 
     pub async fn build(self) -> anyhow::Result<FunctionalDevice> {
         let socket = tokio::net::UdpSocket::bind(SocketAddr::from(([0,0,0,0], 0))).await?;
-        socket.connect(&self.peer_endpoint).await?;
+        let mut peer = lookup_host(&self.peer_endpoint).await?;
+        let peer = peer.next()
+            .ok_or_else(||Error::new(ErrorKind::AddrNotAvailable, "No address found"))?;
+        socket.connect(peer).await?;
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;

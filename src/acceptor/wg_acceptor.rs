@@ -11,7 +11,7 @@ use tcp_ip::tcp::TcpListener;
 
 pub async fn main_loop() -> anyhow::Result<()> {
     let tun = device::wg_device::WgDevice::new(
-        env::var("WG_PEER_ENDPOINT")?.to_addr()?,
+        env::var("WG_PEER_ENDPOINT")?,
         read_key("WG_PEER_KEY")?,
         read_key("WG_PRIVATE_KEY")?
     );
