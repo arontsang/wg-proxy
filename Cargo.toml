@@ -7,9 +7,6 @@ edition = "2024"
 name = "azure"
 path = "src/azure_function.rs"
 
-[[bin]]
-name = "tun"
-path = "src/tun.rs"
 
 [[bin]]
 name = "wg"
@@ -32,4 +29,4 @@ serde_json = "1.0.149"
 tcp_ip = "0.1.10"
 tokio = { version = "1.50.0", features = ["fs", "io-util", "macros", "net", "rt-multi-thread"] }
 tokio-stream = "0.1.18"
-tun-rs = { version = "1.5.0", features = ["async"]}
+
