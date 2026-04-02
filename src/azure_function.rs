@@ -2,24 +2,51 @@ pub mod acceptor;
 pub mod device;
 pub mod support;
 pub mod tunnel;
+use axum::{routing::{get, post}, Json, Router};
+use serde::{Deserialize, Serialize};
+use std::env;
 use std::net::SocketAddr;
-use axum::{
-    routing::get,
-    Router,
-};
-
-
 use crate::acceptor::wg_acceptor::main_loop as wg_main_loop;
 use crate::support::get_int_from_env;
 
+#[derive(Deserialize)]
+struct InvokeRequest {
+    Data: serde_json::Value,
+    Metadata: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct InvokeResponse {
+    Outputs: Option<serde_json::Value>,
+    Logs: Vec<String>,
+    ReturnValue: Option<serde_json::Value>,
+}
+
+async fn timer_handler(Json(payload): Json<InvokeRequest>) -> Json<InvokeResponse> {
+    println!("Timer triggered!");
+
+    tokio::time::sleep(std::time::Duration::from_mins(1)).await;
+
+    Json(InvokeResponse {
+        Outputs: None,
+        Logs: vec!["Rust timer function executed successfully".to_string()],
+        ReturnValue: None,
+    })
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let _ = tokio::join!(wg_main_loop(), host_http_trigger());
-    Ok(())
+async fn main() {
+    match futures_lite::future::or(host_http_trigger(), wg_main_loop()).await {
+        Ok(_) => (),
+        Err(e) => {
+            println!("Error: {}", e)
+        },
+    }
 }
 
 async fn host_http_trigger() -> anyhow::Result<()> {
     let app = Router::new()
+        .route("/TimerTriggerRust", post(timer_handler))
         .route("/api/Sleep", get(sleep));
 
     let port = get_int_from_env("FUNCTIONS_CUSTOMHANDLER_PORT")

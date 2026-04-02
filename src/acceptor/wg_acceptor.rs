@@ -17,6 +17,7 @@ pub async fn main_loop() -> anyhow::Result<()> {
     );
 
     let tun = tun.build().await?;
+    println!("wg device is ready");
     let mut listener = TcpListener::bind_all(tun.clone()).await?;
     loop {
         let (socket, addr) = listener.accept().await?;
