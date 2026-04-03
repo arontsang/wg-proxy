@@ -34,7 +34,7 @@ async fn timer_handler(Json(payload): Json<InvokeRequest>) -> Json<InvokeRespons
     })
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     match futures_lite::future::or(host_http_trigger(), wg_main_loop()).await {
         Ok(_) => (),

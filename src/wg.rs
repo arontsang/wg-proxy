@@ -7,7 +7,7 @@ pub mod tunnel;
 
 
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
     crate::acceptor::wg_acceptor::main_loop().await
 }
