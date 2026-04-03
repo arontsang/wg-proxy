@@ -15,16 +15,21 @@ pub async fn main_loop() -> anyhow::Result<()> {
         read_key("WG_PEER_KEY")?,
         read_key("WG_PRIVATE_KEY")?
     );
+    
+    let local_set = tokio::task::LocalSet::new();
 
-    let tun = tun.build().await?;
+    let tun = tun.build(&local_set).await?;
     println!("wg device is ready");
     let mut listener = TcpListener::bind_all(tun.clone()).await?;
-    loop {
-        let (socket, addr) = listener.accept().await?;
-        let io = TokioIo::new(socket);
-        println!("new connection from {}", addr);
-        handle_proxy_request(io);
-    }
+
+    local_set.run_until(async {
+        loop {
+            let (socket, addr) = listener.accept().await?;
+            let io = TokioIo::new(socket);
+            println!("new connection from {}", addr);
+            handle_proxy_request(io);
+        }
+    }).await    
 }
 
 fn read_key(key: &str) -> anyhow::Result<[u8; 32]> {

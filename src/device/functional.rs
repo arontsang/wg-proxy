@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use tcp_ip::{IpStack, IpStackConfig, IpStackRecv, IpStackSend};
+use tokio::task::LocalSet;
 
 pub struct FunctionalDevice {
     ip_stack: IpStack,
@@ -8,12 +9,12 @@ pub struct FunctionalDevice {
 }
 
 impl FunctionalDevice {
-    pub fn new<TPoller, TFuture>(config: IpStackConfig, poller: TPoller) -> anyhow::Result<Self> where
-        TPoller : FnOnce(IpStackSend, IpStackRecv) -> TFuture + 'static + Send,
-        TFuture : Future<Output = ()> + Send + 'static,{
+    pub fn new<TPoller, TFuture>(config: IpStackConfig, local_set: &LocalSet, poller: TPoller) -> anyhow::Result<Self> where
+        TPoller : FnOnce(IpStackSend, IpStackRecv) -> TFuture + 'static,
+        TFuture : Future<Output = ()> + 'static,{
         let (ip_stack, ip_stack_send, ip_stack_recv) =
             tcp_ip::ip_stack(config)?;
-        let poller = tokio::task::spawn(async move {
+        let poller = local_set.spawn_local(async move {
             poller(ip_stack_send, ip_stack_recv).await;
         });
 

@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use tokio::net::lookup_host;
+use tokio::task::LocalSet;
 use crate::device::functional::FunctionalDevice;
 use crate::support::get_int_from_env;
 
@@ -39,15 +40,12 @@ impl WgDevice {
         )
     }
 
-    pub async fn build(self) -> anyhow::Result<FunctionalDevice> {
+    pub async fn build(self, local_set: &LocalSet) -> anyhow::Result<FunctionalDevice> {
         let socket = tokio::net::UdpSocket::bind(SocketAddr::from(([0,0,0,0], 0))).await?;
         let mut peer = lookup_host(&self.peer_endpoint).await?;
         let peer = peer.next()
             .ok_or_else(||Error::new(ErrorKind::AddrNotAvailable, "No address found"))?;
         socket.connect(peer).await?;
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
 
         let wg = WgDevice::build_tunnel(&self);
 
@@ -56,112 +54,105 @@ impl WgDevice {
         net_stack_config.mtu = get_int_from_env("WG_MTU")
             .unwrap_or(1380);
 
-        FunctionalDevice::new(net_stack_config, |ip_stack_send, mut ip_stack_recv|async move{
-            std::thread::spawn(move || {
+        FunctionalDevice::new(net_stack_config, local_set, |ip_stack_send, mut ip_stack_recv|async move{
+            let socket = Rc::new(socket);
+            let wg = Rc::new(RefCell::new(wg));
 
-
-                rt.block_on(async {
-                    let socket = Rc::new(socket);
-                    let wg = Rc::new(RefCell::new(wg));
-
-
-                    let handle_tunnel_result = {
-                        let socket = socket.clone();
-                        async move |result: &TunnResult| {
-                            match result {
-                                TunnResult::WriteToNetwork(buffer) => {
-                                    socket.send(buffer).await.unwrap();
-                                }
-                                TunnResult::Err(_) => {
-                                    println!("Error");
-                                }
-                                TunnResult::Done => { }
-                                TunnResult::WriteToTunnelV4(buffer, _) => {
-                                    match ip_stack_send.send_ip_packet(buffer).await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            println!("Error sending ip packet {}", err);
-                                        }
-                                    }
-                                }
-                                TunnResult::WriteToTunnelV6(buffer, _) => {
-                                    match ip_stack_send.send_ip_packet(buffer).await {
-                                        Ok(_) => {}
-                                        Err(err) => {
-                                            println!("Error sending ip packet {}", err);
-                                        }
-                                    }
+            let handle_tunnel_result = {
+                let socket = socket.clone();
+                async move |result: &TunnResult| {
+                    match result {
+                        TunnResult::WriteToNetwork(buffer) => {
+                            socket.send(buffer).await.unwrap();
+                        }
+                        TunnResult::Err(err) => {
+                            println!("WG Error {:?}", err);
+                        }
+                        TunnResult::Done => { }
+                        TunnResult::WriteToTunnelV4(buffer, _) => {
+                            match ip_stack_send.send_ip_packet(buffer).await {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    println!("Error sending ip packet {}", err);
                                 }
                             }
                         }
-                    };
-
-                    let tun_to_net = {
-                        let socket = socket.clone();
-                        let wg = wg.clone();
-                        let mut udp_buffer = [0u8; 1500];
-                        let mut net_buffer = [0u8; 1500];
-                        let handle_tunnel_result = handle_tunnel_result.clone();
-                        async move {
-                            loop {
-                                let len = socket.recv(&mut udp_buffer).await.unwrap();
-                                let requires_more_decapsulation = {
-                                    let udp_buffer = &udp_buffer[..len];
-                                    let result = wg.borrow_mut().decapsulate(None, udp_buffer, &mut net_buffer);
-                                    handle_tunnel_result(&result).await;
-                                    matches! (result, TunnResult::WriteToNetwork(_))
-                                };
-
-                                if requires_more_decapsulation {
-                                    loop {
-                                        match wg.borrow_mut().decapsulate(None, &[], &mut udp_buffer) {
-                                            TunnResult::WriteToNetwork(buffer) => {
-                                                socket.send(buffer).await.ok();
-                                            }
-                                            _ => break
-                                        }
-                                    }
+                        TunnResult::WriteToTunnelV6(buffer, _) => {
+                            match ip_stack_send.send_ip_packet(buffer).await {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    println!("Error sending ip packet {}", err);
                                 }
                             }
                         }
-                    };
+                    }
+                }
+            };
 
-                    let net_to_tun = {
-                        let wg = wg.clone();
-                        let mut udp_buffer = [0u8; 1500];
-                        let mut net_buffer = [0u8; 1500];
-                        let handle_tunnel_result = handle_tunnel_result.clone();
-                        async move {
-                            loop {
-                                let len = ip_stack_recv.recv(&mut net_buffer).await.unwrap();
-                                let net_buffer = &net_buffer[..len];
-                                let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffer);
-                                handle_tunnel_result(&result).await;
-                            }
-                        }
-                    };
+            let tun_to_net = {
+                let socket = socket.clone();
+                let wg = wg.clone();
+                let mut udp_buffer = [0u8; 1500];
+                let mut net_buffer = [0u8; 1500];
+                let handle_tunnel_result = handle_tunnel_result.clone();
+                async move {
+                    loop {
+                        let len = socket.recv(&mut udp_buffer).await.unwrap();
+                        let requires_more_decapsulation = {
+                            let udp_buffer = &udp_buffer[..len];
+                            let result = wg.borrow_mut().decapsulate(None, udp_buffer, &mut net_buffer);
+                            handle_tunnel_result(&result).await;
+                            matches! (result, TunnResult::WriteToNetwork(_))
+                        };
 
-                    let timer = {
-                        //let peer_endpoint = peer_endpoint.clone();
-                        let socket = socket.clone();
-                        let wg = wg.clone();
-                        async move {
-                            let mut buffer = [0u8; 1500];
+                        if requires_more_decapsulation {
                             loop {
-                                match wg.borrow_mut().update_timers(&mut buffer) {
+                                match wg.borrow_mut().decapsulate(None, &[], &mut udp_buffer) {
                                     TunnResult::WriteToNetwork(buffer) => {
-                                        socket.send(buffer.as_ref()).await.ok();
+                                        socket.send(buffer).await.ok();
                                     }
-                                    _ => { }
+                                    _ => break
                                 }
-                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                             }
                         }
-                    };
+                    }
+                }
+            };
 
-                    tokio::join!(tun_to_net, net_to_tun, timer);
-                });
-            });
+            let net_to_tun = {
+                let wg = wg.clone();
+                let mut udp_buffer = [0u8; 1500];
+                let mut net_buffer = [0u8; 1500];
+                let handle_tunnel_result = handle_tunnel_result.clone();
+                async move {
+                    loop {
+                        let len = ip_stack_recv.recv(&mut net_buffer).await.unwrap();
+                        let net_buffer = &net_buffer[..len];
+                        let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffer);
+                        handle_tunnel_result(&result).await;
+                    }
+                }
+            };
+
+            let timer = {
+                //let peer_endpoint = peer_endpoint.clone();
+                let socket = socket.clone();
+                let wg = wg.clone();
+                async move {
+                    let mut buffer = [0u8; 1500];
+                    loop {
+                        match wg.borrow_mut().update_timers(&mut buffer) {
+                            TunnResult::WriteToNetwork(buffer) => {
+                                socket.send(buffer.as_ref()).await.ok();
+                            }
+                            _ => { }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                }
+            };
+
+            tokio::join!(tun_to_net, net_to_tun, timer);
         })
     }
 }
