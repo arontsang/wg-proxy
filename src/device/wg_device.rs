@@ -3,12 +3,13 @@
 
 use boringtun::noise::{Tunn, TunnResult};
 use std::cell::RefCell;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, IoSliceMut};
 use std::net::SocketAddr;
 use std::rc::Rc;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use tokio::net::lookup_host;
 use tokio::task::LocalSet;
+use udp_socket::{RecvMeta, Transmit, UdpSocket};
 use crate::device::functional::FunctionalDevice;
 use crate::support::get_int_from_env;
 
@@ -41,11 +42,11 @@ impl WgDevice {
     }
 
     pub async fn build(self, local_set: &LocalSet) -> anyhow::Result<FunctionalDevice> {
-        let socket = tokio::net::UdpSocket::bind(SocketAddr::from(([0,0,0,0], 0))).await?;
+        let socket = UdpSocket::bind(SocketAddr::from(([0,0,0,0], 0)))?;
         let mut peer = lookup_host(&self.peer_endpoint).await?;
         let peer = peer.next()
             .ok_or_else(||Error::new(ErrorKind::AddrNotAvailable, "No address found"))?;
-        socket.connect(peer).await?;
+
 
         let wg = WgDevice::build_tunnel(&self);
 
@@ -92,23 +93,50 @@ impl WgDevice {
             let tun_to_net = {
                 let socket = socket.clone();
                 let wg = wg.clone();
-                let mut udp_buffer = [0u8; 1500];
                 let mut net_buffer = [0u8; 1500];
                 let handle_tunnel_result = handle_tunnel_result.clone();
+                const MAX_BUFFER_SIZE: usize = 1500;
+                const MAX_BUFFER_COUNT: usize = 8;
                 async move {
                     loop {
-                        let len = socket.recv(&mut udp_buffer).await.unwrap();
-                        let requires_more_decapsulation = {
-                            let udp_buffer = &udp_buffer[..len];
+                        let io_buffer = [[0u8; MAX_BUFFER_SIZE]; MAX_BUFFER_COUNT];
+                        let io_buff_ptr = io_buffer.as_mut_ptr();
+
+                        let meta = [RecvMeta::default(); MAX_BUFFER_COUNT];
+                        let meta_ptr = meta.as_mut_ptr();
+
+                        let foo = std::future::poll_fn(move |cx| {
+                            let io_buff_ptr = io_buff_ptr;
+                            let meta_ptr = meta_ptr;
+                            let io_buffer: &mut [[u8; MAX_BUFFER_SIZE]; MAX_BUFFER_COUNT] = unsafe {
+                                std::slice::from_raw_parts_mut(io_buff_ptr, MAX_BUFFER_COUNT)
+                            }.try_into().unwrap();
+                            let mut meta: &mut [RecvMeta] = unsafe {
+                                std::slice::from_raw_parts_mut(meta_ptr, MAX_BUFFER_COUNT)
+                            };
+                            let mut io_buffer = io_buffer.map(|mut x| IoSliceMut::new(&mut x));
+                            socket.poll_recv(cx, &mut io_buffer, &mut meta)
+                        }).await;
+
+                        let mut requires_more_decapsulation = false;
+                        while let Some((udp_buffer, meta)) = io_buffer.iter().zip(meta).next() {
+                            if meta.len == 0 { continue; }
+                            let udp_buffer = &udp_buffer[..meta.len];
                             let result = wg.borrow_mut().decapsulate(None, udp_buffer, &mut net_buffer);
                             handle_tunnel_result(&result).await;
-                            matches! (result, TunnResult::WriteToNetwork(_))
-                        };
+                            requires_more_decapsulation = requires_more_decapsulation | matches! (result, TunnResult::WriteToNetwork(_))
+                        }
+
+
+
+
 
                         if requires_more_decapsulation {
                             loop {
+                                let mut udp_buffer = [0u8; 1500];
                                 match wg.borrow_mut().decapsulate(None, &[], &mut udp_buffer) {
                                     TunnResult::WriteToNetwork(buffer) => {
+                                        let payload = Transmit::
                                         socket.send(buffer).await.ok();
                                     }
                                     _ => break
