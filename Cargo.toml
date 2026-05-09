@@ -7,6 +7,9 @@ edition = "2024"
 name = "azure"
 path = "src/azure_function.rs"
 
+[[bin]]
+name = "container"
+path = "src/container.rs"
 
 [[bin]]
 name = "wg"
