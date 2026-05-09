@@ -1,0 +1,36 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: proxy
+  template:
+    metadata:
+      labels:
+        app: proxy
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: socat
+          securityContext:
+            allowPrivilegeEscalation: false
+          env:
+            - name: PREWARM_ENDPOINT
+              value: https://foobar.region.azurecontainerapps.io/Sleep?seconds=0
+            - name: PING_ENDPOINT
+              value: https://foobar.region.azurecontainerapps.io/Sleep?seconds=1
+            - name: HTTP_TUNNEL_ADDRESS
+              value: "10.11.209.100"
+            - name: HTTP_TUNNEL_PORT
+              value: "3128"
+          image: ghcr.io/arontsang/socat-curl-proxy:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3128

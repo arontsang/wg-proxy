@@ -1,0 +1,18 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: proxy
+spec:
+  ipFamilies:
+    - IPv6
+    - IPv4
+  ports:
+    - protocol: TCP
+      port: 3128
+      targetPort: 3128
+      name: http
+  selector:
+    app: proxy
+  type: LoadBalancer
+  ipFamilyPolicy: PreferDualStack
+  externalTrafficPolicy: Local
