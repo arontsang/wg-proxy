@@ -6,7 +6,6 @@ use crate::tunnel::http::handle_proxy_request;
 
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
-use tcp_ip::address::ToSocketAddr;
 use tcp_ip::tcp::TcpListener;
 
 pub async fn main_loop() -> anyhow::Result<()> {
