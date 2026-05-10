@@ -51,8 +51,11 @@ impl WgDevice {
 
 
         let mut net_stack_config = tcp_ip::IpStackConfig::default();
-        net_stack_config.mtu = get_int_from_env("WG_MTU")
+        let mtu = get_int_from_env("WG_MTU")
             .unwrap_or(1380);
+        net_stack_config.mtu = mtu;
+        let mss = get_int_from_env("WG_MSS");
+        net_stack_config.tcp_config.mss = mss;
 
         FunctionalDevice::new(net_stack_config, local_set, |ip_stack_send, mut ip_stack_recv|async move{
             let socket = Rc::new(socket);
