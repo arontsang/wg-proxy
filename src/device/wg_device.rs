@@ -56,6 +56,7 @@ impl WgDevice {
         net_stack_config.mtu = mtu;
         let mss = get_int_from_env("WG_MSS");
         net_stack_config.tcp_config.mss = mss;
+        net_stack_config.tcp_config.window_shift_cnt = 8;
 
         FunctionalDevice::new(net_stack_config, local_set, |ip_stack_send, mut ip_stack_recv|async move{
             let socket = Rc::new(socket);
