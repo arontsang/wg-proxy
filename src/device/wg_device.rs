@@ -133,6 +133,13 @@ impl WgDevice {
                         let net_buffer = &net_buffer[..len];
                         let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffer);
                         handle_tunnel_result(&result).await;
+                        
+                        // Try to receive additional packets without blocking
+                        while let Ok(len) = ip_stack_recv.try_recv(&mut net_buffer) {
+                            let net_buffer = &net_buffer[..len];
+                            let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffer);
+                            handle_tunnel_result(&result).await;
+                        }
                     }
                 }
             };
