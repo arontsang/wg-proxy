@@ -25,7 +25,6 @@ pub async fn main_loop() -> anyhow::Result<()> {
         loop {
             let (socket, addr) = listener.accept().await?;
             let io = TokioIo::new(socket);
-            println!("new connection from {}", addr);
             handle_proxy_request(io);
         }
     }).await    

@@ -34,7 +34,7 @@ where TRequest : Read + Write + Unpin + Send + 'static {
             .with_upgrades()
             .await
         {
-            println!("Failed to serve connection: {:?}", err);
+            //println!("Failed to serve connection: {:?}", err);
         }
     });
 }
@@ -42,7 +42,7 @@ where TRequest : Read + Write + Unpin + Send + 'static {
 async fn proxy(
     req: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    println!("req: {:?}", req);
+    //println!("req: {:?}", req);
 
     if Method::CONNECT == req.method() {
         // Received an HTTP request like:
@@ -127,16 +127,12 @@ async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     let buffer_size: usize = get_value_from_env("PROXY_BUFFER_SIZE").unwrap_or(8 * 1024);
 
     // Proxying data
-    let (from_client, from_server) =
+    let (_, _) =
         tokio::io::copy_bidirectional_with_sizes(&mut upgraded, &mut server, buffer_size, buffer_size).await?;
 
     let _ = upgraded.shutdown().await;
     let _ = server.shutdown().await;
-    // Print message when done
-    println!(
-        "client wrote {} bytes and received {} bytes",
-        from_client, from_server
-    );
+
 
     Ok(())
 }
