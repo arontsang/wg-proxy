@@ -125,21 +125,25 @@ impl WgDevice {
 
             let net_to_tun = {
                 let wg = wg.clone();
-                let mut udp_buffer = [0u8; 1500];
-                let mut net_buffer = [0u8; 1500];
+                const BUFFER_COUNT: usize = 64;
+                let mut udp_buffers = [0u8; 1500];
+                let mut net_buffers = [[0u8; 1500]; BUFFER_COUNT];
+                let mut net_buffers_lengths = [0usize; BUFFER_COUNT];
                 let handle_tunnel_result = handle_tunnel_result.clone();
                 async move {
                     loop {
-                        let len = ip_stack_recv.recv(&mut net_buffer).await.unwrap();
-                        let net_buffer = &net_buffer[..len];
-                        let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffer);
-                        handle_tunnel_result(&result).await;
+                        let count = ip_stack_recv.recv_ip_packet(&mut net_buffers, &mut net_buffers_lengths).await.unwrap();
+                        for i in 0..count {
+                            let len = net_buffers_lengths[i];
+                            let net_buffer = &net_buffers[i][..len];
+                            let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffers);
+                            handle_tunnel_result(&result).await;
+                        }
                     }
                 }
             };
 
             let timer = {
-                //let peer_endpoint = peer_endpoint.clone();
                 let socket = socket.clone();
                 let wg = wg.clone();
                 async move {
