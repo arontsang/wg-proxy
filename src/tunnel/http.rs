@@ -11,7 +11,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::support::TokioIo;
+use crate::support::{get_value_from_env, TokioIo};
 
 pub async fn handle_proxy_request_stream<TStream, TRequest>(requests: &mut TStream) -> Result<()>
 where TRequest : Read + Write + Unpin + Send + 'static,
@@ -124,9 +124,11 @@ async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     let mut server = TcpStream::connect(addr).await?;
     let mut upgraded = TokioIo::new(upgraded);
 
+    let buffer_size: usize = get_value_from_env("PROXY_BUFFER_SIZE").unwrap_or(8 * 1024);
+
     // Proxying data
     let (from_client, from_server) =
-        tokio::io::copy_bidirectional(&mut upgraded, &mut server).await?;
+        tokio::io::copy_bidirectional_with_sizes(&mut upgraded, &mut server, buffer_size, buffer_size).await?;
 
     let _ = upgraded.shutdown().await;
     let _ = server.shutdown().await;
