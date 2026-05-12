@@ -10,7 +10,7 @@ use boringtun::x25519::{PublicKey, StaticSecret};
 use tokio::net::lookup_host;
 use tokio::task::LocalSet;
 use crate::device::functional::FunctionalDevice;
-use crate::support::get_int_from_env;
+use crate::support::get_value_from_env;
 
 pub struct WgDevice{
     peer_endpoint: String,
@@ -51,13 +51,16 @@ impl WgDevice {
 
 
         let mut net_stack_config = tcp_ip::IpStackConfig::default();
-        let mtu = get_int_from_env("WG_MTU")
+        let mtu = get_value_from_env("WG_MTU")
             .unwrap_or(1380);
         net_stack_config.mtu = mtu;
-        let mss = get_int_from_env("WG_MSS");
-        net_stack_config.tcp_config.mss = mss;
-        net_stack_config.tcp_config.window_shift_cnt = 8;
-
+        net_stack_config.tcp_config.mss = get_value_from_env("WG_MSS");
+        if let Some(value) = get_value_from_env("WG_TCP_WINDOW") {
+            net_stack_config.tcp_config.window_shift_cnt = value;
+        };
+        if let Some(value) = get_value_from_env("WG_TCP_CHANNEL_SIZE") {
+            net_stack_config.tcp_channel_size = value;
+        };
         FunctionalDevice::new(net_stack_config, local_set, |ip_stack_send, mut ip_stack_recv|async move{
             let socket = Rc::new(socket);
             let wg = Rc::new(RefCell::new(wg));

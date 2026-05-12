@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::net::SocketAddr;
 use crate::acceptor::wg_acceptor::main_loop as wg_main_loop;
-use crate::support::get_int_from_env;
+use crate::support::get_value_from_env;
 
 #[derive(Deserialize)]
 struct InvokeRequest {
@@ -49,7 +49,7 @@ async fn host_http_trigger() -> anyhow::Result<()> {
         .route("/TimerTriggerRust", post(timer_handler))
         .route("/api/Sleep", get(sleep));
 
-    let port = get_int_from_env("FUNCTIONS_CUSTOMHANDLER_PORT")
+    let port = get_value_from_env("FUNCTIONS_CUSTOMHANDLER_PORT")
         .unwrap_or(3000);
 
     let listen_addr = SocketAddr::from(([0, 0, 0, 0], port));

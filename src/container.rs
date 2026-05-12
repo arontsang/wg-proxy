@@ -6,7 +6,7 @@ use axum::{routing::{get}, Router, extract::Query};
 use serde::{Deserialize};
 use std::net::SocketAddr;
 use crate::acceptor::wg_acceptor::main_loop as wg_main_loop;
-use crate::support::get_int_from_env;
+use crate::support::get_value_from_env;
 
 
 
@@ -24,7 +24,7 @@ async fn host_http_trigger() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/Sleep", get(sleep));
 
-    let port = get_int_from_env("HTTP_BIND_PORT")
+    let port = get_value_from_env("HTTP_BIND_PORT")
         .unwrap_or(80);
 
     let listen_addr = SocketAddr::from(([0, 0, 0, 0], port));
