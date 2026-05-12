@@ -27,14 +27,13 @@ where TRequest : Read + Write + Unpin + Send + 'static,
 pub fn handle_proxy_request<TRequest>(request: TRequest)
 where TRequest : Read + Write + Unpin + Send + 'static {
     tokio::spawn(async move {
-        if let Err(err) = ServerBuilder::new()
+        if let Err(_) = ServerBuilder::new()
             .preserve_header_case(true)
             .title_case_headers(true)
             .serve_connection(request, service_fn(proxy))
             .with_upgrades()
             .await
         {
-            //println!("Failed to serve connection: {:?}", err);
         }
     });
 }
@@ -52,10 +51,10 @@ async fn proxy(
         // Proxy-Connection: Keep-Alive
         // ```
         //
-        // When HTTP method is CONNECT we should return an empty body
+        // When HTTP method is CONNECT, we should return an empty body,
         // then we can eventually upgrade the connection and talk a new protocol.
         //
-        // Note: only after client received an empty body with STATUS_OK can the
+        // Note: only after the client received an empty body with STATUS_OK can the
         // connection be upgraded, so we can't return a response inside
         // `on_upgrade` future.
         if let Some(addr) = host_addr(req.uri()) {
@@ -130,8 +129,8 @@ async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     let (_, _) =
         tokio::io::copy_bidirectional_with_sizes(&mut upgraded, &mut server, buffer_size, buffer_size).await?;
 
-    let _ = upgraded.shutdown().await;
-    let _ = server.shutdown().await;
+    // let _ = upgraded.shutdown().await;
+    // let _ = server.shutdown().await;
 
 
     Ok(())
