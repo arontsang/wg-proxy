@@ -2,7 +2,7 @@
 
 
 use boringtun::noise::{Tunn, TunnResult};
-use std::cell::RefCell;
+pub use std::cell::UnsafeCell;
 use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -63,7 +63,7 @@ impl WgDevice {
         };
         FunctionalDevice::new(net_stack_config, local_set, |ip_stack_send, mut ip_stack_recv|async move{
             let socket = Rc::new(socket);
-            let wg = Rc::new(RefCell::new(wg));
+            let wg = Rc::new(UnsafeCell::new(wg));
 
             let handle_tunnel_result = {
                 let socket = socket.clone();
@@ -98,7 +98,7 @@ impl WgDevice {
 
             let tun_to_net = {
                 let socket = socket.clone();
-                let wg = wg.clone();
+                let mut wg = wg.clone();
                 let mut udp_buffer = [0u8; 1500];
                 let mut net_buffer = [0u8; 1500];
                 let handle_tunnel_result = handle_tunnel_result.clone();
@@ -107,14 +107,14 @@ impl WgDevice {
                         let len = socket.recv(&mut udp_buffer).await.unwrap();
                         let requires_more_decapsulation = {
                             let udp_buffer = &udp_buffer[..len];
-                            let result = wg.borrow_mut().decapsulate(None, udp_buffer, &mut net_buffer);
+                            let result = unsafe { mut_unchecked(&mut wg) }.decapsulate(None, udp_buffer, &mut net_buffer);
                             handle_tunnel_result(&result).await;
                             matches! (result, TunnResult::WriteToNetwork(_))
                         };
 
                         if requires_more_decapsulation {
                             loop {
-                                match wg.borrow_mut().decapsulate(None, &[], &mut udp_buffer) {
+                                match unsafe { mut_unchecked(&mut wg) }.decapsulate(None, &[], &mut udp_buffer) {
                                     TunnResult::WriteToNetwork(buffer) => {
                                         socket.send(buffer).await.ok();
                                     }
@@ -127,7 +127,7 @@ impl WgDevice {
             };
 
             let net_to_tun = {
-                let wg = wg.clone();
+                let mut wg = wg.clone();
                 const BUFFER_COUNT: usize = 64;
                 let mut udp_buffers = [0u8; 1500];
                 let mut net_buffers = [[0u8; 1500]; BUFFER_COUNT];
@@ -139,7 +139,7 @@ impl WgDevice {
                         for i in 0..count {
                             let len = net_buffers_lengths[i];
                             let net_buffer = &net_buffers[i][..len];
-                            let result = wg.borrow_mut().encapsulate(net_buffer, &mut udp_buffers);
+                            let result = unsafe { mut_unchecked(&mut wg) }.encapsulate(net_buffer, &mut udp_buffers);
                             handle_tunnel_result(&result).await;
                         }
                     }
@@ -148,11 +148,11 @@ impl WgDevice {
 
             let timer = {
                 let socket = socket.clone();
-                let wg = wg.clone();
+                let mut wg = wg.clone();
                 async move {
                     let mut buffer = [0u8; 1500];
                     loop {
-                        match wg.borrow_mut().update_timers(&mut buffer) {
+                        match unsafe { mut_unchecked(&mut wg) }.update_timers(&mut buffer) {
                             TunnResult::WriteToNetwork(buffer) => {
                                 socket.send(buffer.as_ref()).await.ok();
                             }
@@ -166,4 +166,9 @@ impl WgDevice {
             tokio::join!(tun_to_net, net_to_tun, timer);
         })
     }
+}
+
+unsafe fn mut_unchecked<T>(cell: &mut Rc<UnsafeCell<T>>) -> &mut T {
+    let ptr = cell.get();
+    unsafe { &mut *ptr }
 }
