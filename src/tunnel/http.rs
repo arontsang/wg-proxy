@@ -121,6 +121,7 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
 async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     // Connect to remote server
     let mut server = TcpStream::connect(addr).await?;
+    server.set_nodelay(true)?;
     let mut upgraded = TokioIo::new(upgraded);
 
     let buffer_size: usize = get_value_from_env("PROXY_BUFFER_SIZE").unwrap_or(8 * 1024);
@@ -128,10 +129,6 @@ async fn tunnel(upgraded: Upgraded, addr: String) -> std::io::Result<()> {
     // Proxying data
     let (_, _) =
         tokio::io::copy_bidirectional_with_sizes(&mut upgraded, &mut server, buffer_size, buffer_size).await?;
-
-    // let _ = upgraded.shutdown().await;
-    // let _ = server.shutdown().await;
-
 
     Ok(())
 }
