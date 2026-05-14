@@ -4,7 +4,6 @@ pub mod support;
 pub mod tunnel;
 use axum::{routing::{get, post}, Json, Router};
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::net::SocketAddr;
 use crate::acceptor::wg_acceptor::main_loop as wg_main_loop;
 use crate::support::get_value_from_env;
@@ -22,7 +21,7 @@ struct InvokeResponse {
     ReturnValue: Option<serde_json::Value>,
 }
 
-async fn timer_handler(Json(payload): Json<InvokeRequest>) -> Json<InvokeResponse> {
+async fn timer_handler(Json(_payload): Json<InvokeRequest>) -> Json<InvokeResponse> {
     println!("Timer triggered!");
 
     tokio::time::sleep(std::time::Duration::from_mins(5)).await;

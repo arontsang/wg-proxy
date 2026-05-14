@@ -8,15 +8,16 @@ use std::rc::Rc;
 use std::task::{Context, Poll};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ipstack::{IpStack, IpStackConfig, IpStackError, IpStackStream, TcpConfig};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf, ReadHalf, SimplexStream, WriteHalf};
+use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf, ReadHalf, WriteHalf};
 use tokio::net::lookup_host;
 
 use tokio::task::{JoinHandle, LocalSet};
+use crate::device::packet_stream::PacketStream;
 use crate::support::get_value_from_env;
 
 struct WgDeviceProxy {
-    read: ReadHalf<SimplexStream>,
-    write: WriteHalf<SimplexStream>,
+    read: ReadHalf<PacketStream>,
+    write: WriteHalf<PacketStream>,
 }
 
 impl AsyncRead for WgDeviceProxy {
@@ -78,8 +79,8 @@ impl WgDevice {
 
         let wg = WgDevice::build_tunnel(peer_public_key, private_key);
 
-        let (mut ip_stack_recv, write) = tokio::io::simplex(1500);
-        let (read, ip_stack_send) = tokio::io::simplex(1500);
+        let (mut ip_stack_recv, write) = split(PacketStream::new());
+        let (read, ip_stack_send) = split(PacketStream::new());
 
         let proxy = WgDeviceProxy {
             write,
