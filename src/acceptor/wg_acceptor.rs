@@ -6,26 +6,37 @@ use crate::tunnel::http::handle_proxy_request;
 
 use base64::{Engine as _, engine::general_purpose};
 use std::env;
-use tcp_ip::tcp::TcpListener;
+use ipstack::IpStackStream;
 
 pub async fn main_loop() -> anyhow::Result<()> {
-    let tun = device::wg_device::WgDevice::new(
+    let local_set = tokio::task::LocalSet::new();
+    let mut tun = device::wg_device::WgDevice::new(
+        &local_set,
         env::var("WG_PEER_ENDPOINT")?,
         read_key("WG_PEER_KEY")?,
         read_key("WG_PRIVATE_KEY")?
-    );
-    
-    let local_set = tokio::task::LocalSet::new();
+    ).await?;
 
-    let tun = tun.build(&local_set).await?;
     println!("wg device is ready");
-    let mut listener = TcpListener::bind_all(tun.clone()).await?;
 
     local_set.run_until(async {
         loop {
-            let (socket, addr) = listener.accept().await?;
-            let io = TokioIo::new(socket);
-            handle_proxy_request(io);
+            match tun.accept().await {
+                Ok(IpStackStream::Tcp(tcp)) => {
+                    let io = TokioIo::new(tcp);
+                    handle_proxy_request(io);
+                }
+                Ok(IpStackStream::Udp(_)) => {
+                    println!("Unable to accept udp");
+                }
+                Err(err) => {
+                    println!("Error accepting connection {}", err);
+                }
+                _ => {
+                    println!("Unable to accept unknown transport");
+
+                }
+            }
         }
     }).await    
 }

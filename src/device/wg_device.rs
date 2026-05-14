@@ -1,38 +1,68 @@
-
-
-
+use std::cell::RefCell;
 use boringtun::noise::{Tunn, TunnResult};
 pub use std::cell::UnsafeCell;
 use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
+use std::pin::{Pin};
 use std::rc::Rc;
+use std::task::{Context, Poll};
 use boringtun::x25519::{PublicKey, StaticSecret};
+use ipstack::{IpStack, IpStackConfig, IpStackError, IpStackStream, TcpConfig};
+use tokio::io::{split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf, ReadHalf, WriteHalf};
 use tokio::net::lookup_host;
-use tokio::task::LocalSet;
-use crate::device::functional::FunctionalDevice;
+
+use tokio::task::{JoinHandle, LocalSet};
+use crate::device::packet_stream::PacketStream;
 use crate::support::get_value_from_env;
 
-pub struct WgDevice{
-    peer_endpoint: String,
-    peer_public_key: [u8; 32],
-    private_key: [u8; 32],
+struct WgDeviceProxy {
+    read: ReadHalf<PacketStream>,
+    write: WriteHalf<PacketStream>,
 }
 
+impl AsyncRead for WgDeviceProxy {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().read).poll_read(cx, buf)
+    }
+}
 
-impl WgDevice {
-
-    pub fn new (peer_endpoint: String, peer_public_key: [u8; 32], private_key: [u8; 32]) -> Self {
-        Self {
-            private_key,
-            peer_endpoint,
-            peer_public_key
-        }
+impl AsyncWrite for WgDeviceProxy {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.get_mut().write).poll_write(cx, buf)
     }
 
-    fn build_tunnel(&self) -> Tunn {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().write).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().write).poll_shutdown(cx)
+    }
+}
+
+pub struct WgDevice {
+    ip_stack: IpStack,
+    poller: JoinHandle<()>
+}
+
+impl Drop for WgDevice {
+    fn drop(&mut self) {
+        self.poller.abort();
+    }
+}
+
+impl WgDevice {
+    pub async fn accept(&mut self) -> Result<IpStackStream, IpStackError> {
+        self.ip_stack.accept().await
+    }
+
+}
+
+impl WgDevice {
+    fn build_tunnel(peer_public_key: [u8; 32], private_key: [u8; 32]) -> Tunn {
         Tunn::new(
-            StaticSecret::from(self.private_key.clone()),
-            PublicKey::from(self.peer_public_key.clone()),
+            StaticSecret::from(private_key.clone()),
+            PublicKey::from(peer_public_key.clone()),
             None,
             Some(1),
             100,
@@ -40,28 +70,26 @@ impl WgDevice {
         )
     }
 
-    pub async fn build(self, local_set: &LocalSet) -> anyhow::Result<FunctionalDevice> {
+    pub async fn new(local_set: &LocalSet, peer_endpoint: String, peer_public_key: [u8; 32], private_key: [u8; 32]) -> anyhow::Result<WgDevice> {
         let socket = tokio::net::UdpSocket::bind(SocketAddr::from(([0,0,0,0], 0))).await?;
-        let mut peer = lookup_host(&self.peer_endpoint).await?;
+        let mut peer = lookup_host(peer_endpoint).await?;
         let peer = peer.next()
             .ok_or_else(||Error::new(ErrorKind::AddrNotAvailable, "No address found"))?;
         socket.connect(peer).await?;
 
-        let wg = WgDevice::build_tunnel(&self);
+        let wg = WgDevice::build_tunnel(peer_public_key, private_key);
 
+        let (mut ip_stack_recv, write) = split(PacketStream::new());
+        let (read, ip_stack_send) = split(PacketStream::new());
 
-        let mut net_stack_config = tcp_ip::IpStackConfig::default();
-        let mtu = get_value_from_env("WG_MTU")
-            .unwrap_or(1380);
-        net_stack_config.mtu = mtu;
-        net_stack_config.tcp_config.mss = get_value_from_env("WG_MSS");
-        if let Some(value) = get_value_from_env("WG_TCP_WINDOW") {
-            net_stack_config.tcp_config.window_shift_cnt = value;
+        let proxy = WgDeviceProxy {
+            write,
+            read
         };
-        if let Some(value) = get_value_from_env("WG_TCP_CHANNEL_SIZE") {
-            net_stack_config.tcp_channel_size = value;
-        };
-        FunctionalDevice::new(net_stack_config, local_set, |ip_stack_send, mut ip_stack_recv|async move{
+
+        let ip_stack_send = Rc::new(RefCell::new(ip_stack_send));
+
+        let poller = local_set.spawn_local(async move {
             let socket = Rc::new(socket);
             let wg = Rc::new(UnsafeCell::new(wg));
 
@@ -77,7 +105,7 @@ impl WgDevice {
                         }
                         TunnResult::Done => { }
                         TunnResult::WriteToTunnelV4(buffer, _) => {
-                            match ip_stack_send.send_ip_packet(buffer).await {
+                            match ip_stack_send.borrow_mut().write(buffer).await {
                                 Ok(_) => {}
                                 Err(err) => {
                                     println!("Error sending ip packet {}", err);
@@ -85,7 +113,7 @@ impl WgDevice {
                             }
                         }
                         TunnResult::WriteToTunnelV6(buffer, _) => {
-                            match ip_stack_send.send_ip_packet(buffer).await {
+                            match ip_stack_send.borrow_mut().write(buffer).await {
                                 Ok(_) => {}
                                 Err(err) => {
                                     println!("Error sending ip packet {}", err);
@@ -122,26 +150,26 @@ impl WgDevice {
                                 }
                             }
                         }
+
+                        tokio::task::yield_now().await;
                     }
                 }
             };
 
             let net_to_tun = {
                 let mut wg = wg.clone();
-                const BUFFER_COUNT: usize = 64;
-                let mut udp_buffers = [0u8; 1500];
-                let mut net_buffers = [[0u8; 1500]; BUFFER_COUNT];
-                let mut net_buffers_lengths = [0usize; BUFFER_COUNT];
+                let mut udp_buffer = [0u8; 1500];
+                let mut net_buffer = [0u8; 1500];
                 let handle_tunnel_result = handle_tunnel_result.clone();
                 async move {
                     loop {
-                        let count = ip_stack_recv.recv_ip_packet(&mut net_buffers, &mut net_buffers_lengths).await.unwrap();
-                        for i in 0..count {
-                            let len = net_buffers_lengths[i];
-                            let net_buffer = &net_buffers[i][..len];
-                            let result = unsafe { mut_unchecked(&mut wg) }.encapsulate(net_buffer, &mut udp_buffers);
+                        if let Ok(len) = ip_stack_recv.read(&mut net_buffer).await {
+                            let net_buffer = &net_buffer[..len];
+                            let result = unsafe { mut_unchecked(&mut wg) }.encapsulate(net_buffer, &mut udp_buffer);
                             handle_tunnel_result(&result).await;
                         }
+
+                        tokio::task::yield_now().await;
                     }
                 }
             };
@@ -164,7 +192,34 @@ impl WgDevice {
             };
 
             tokio::join!(tun_to_net, net_to_tun, timer);
-        })
+
+        });
+
+        let mut config = IpStackConfig::default();
+        let mut tcp_config = TcpConfig::default();
+        if let Some(value) = get_value_from_env("WG_MAX_UNACKED_BYTES") {
+            tcp_config.max_unacked_bytes = value;
+        }
+
+        if let Some(value) = get_value_from_env("WG_MTU") {
+            config.mtu_unchecked(value);
+        }
+        config.with_tcp_config(tcp_config);
+        config.packet_information(false);
+
+
+        let stack = ipstack::IpStack::new(
+            config,
+            proxy,
+        );
+
+
+        Ok(
+            WgDevice {
+                ip_stack: stack,
+                poller
+            }
+        )
     }
 }
 
