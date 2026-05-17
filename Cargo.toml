@@ -29,6 +29,7 @@ hyper = { version = "1.8.1", features = ["http1", "client", "server"] }
 pin-project-lite = "0.2.17"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+socket2 = "0.6.3"
 tcp_ip = "0.1.10"
 tokio = { version = "1.50.0", features = ["fs", "io-util", "macros", "net"] }
 tokio-stream = "0.1.18"

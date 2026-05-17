@@ -5,6 +5,7 @@ use boringtun::noise::{Tunn, TunnResult};
 pub use std::cell::UnsafeCell;
 use std::io::{Error, ErrorKind};
 use std::net::SocketAddr;
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::rc::Rc;
 use boringtun::x25519::{PublicKey, StaticSecret};
 use tokio::net::lookup_host;
@@ -45,6 +46,11 @@ impl WgDevice {
         let mut peer = lookup_host(&self.peer_endpoint).await?;
         let peer = peer.next()
             .ok_or_else(||Error::new(ErrorKind::AddrNotAvailable, "No address found"))?;
+
+        let socket2 = unsafe { socket2::Socket::from_raw_fd(socket.as_raw_fd()) };
+        socket2.set_send_buffer_size(8 * 1024 * 1024)?;
+        socket2.set_recv_buffer_size(8 * 1024 * 1024)?;
+        std::mem::forget(socket2);
         socket.connect(peer).await?;
 
         let wg = WgDevice::build_tunnel(&self);

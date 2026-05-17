@@ -1436,6 +1436,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "serde_json",
+ "socket2",
  "tcp_ip",
  "tokio",
  "tokio-stream",
