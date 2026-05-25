@@ -18,6 +18,8 @@ In order to improve throughput on this project, I would need to either:
 Until such time I can take on such a huge undertaking, I am pivoting to using QUIC/Stun/UDP hole punching instead (since Quinn
 has already optimized the GSO pathway).
 
+Instead I am abandoning this effort in favour for https://github.com/arontsang/iroh-vpn-proxy
+
 ## What is this is for
 
 This is a lightweight project that is designed to be deployed to Azure's FAAS intrastructure to provide the user
